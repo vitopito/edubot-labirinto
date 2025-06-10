@@ -1,161 +1,120 @@
+/*
+ * EDUBOT HELLO WORLD EXAMPLE
+ * @Author: Maik Basso <maik@maikbasso.com.br>
+*/
+
 #include <algorithm>
 #include <iostream>
-#include <cmath>
-#include <cstdlib>
-#include <ctime>
-#include <map>
-#include <vector>
 #include "libs/EdubotLib.hpp"
 
-int main() {
-    std::vector<double> sonars(7);
-    EdubotLib *edubotLib = new EdubotLib();
+int main(){
 
-    std::srand(std::time(nullptr)); // seed para aleatoriedade
+	std::vector<double> sonars(7);
+	
+	EdubotLib *edubotLib = new EdubotLib();
 
-    if (edubotLib->connect()) {
-        // Variáveis de controle
-        double ultimaVelocidade = 0.0;
-        int contadorRepeticoesSemMovimento = 0;
-        const double LIMIAR_MOVIMENTO = 0.01;
+	//try to connect on robot
+	if(edubotLib->connect()){
+		
+		std::cout << edubotLib->getX() << " " << edubotLib->getTheta() << std::endl;
+		while (edubotLib->getX() < 2.75) {
 
-        static double anguloSuavizado = 0;
-        const double ALFA = 0.3;
-        const double TOLERANCIA_SONAR = 0.05;
+			if(edubotLib->getTheta != 0 || (edubotLib->getTheta % 90 != 0))
+			// sonars
+			for (int i=0; i<7; i+=3) {	
+				sonars.at(i) = edubotLib->getSonar(i);
+				std::cout << "sonar(" << i << ")_distance: " << edubotLib->getSonar(i) << std::endl;
+			}
 
-        std::map<std::pair<int, int>, int> posicoesVisitadas;
+			int indice = std::distance(sonars.begin(), std::max_element(sonars.begin(), sonars.end()));
 
-        while (edubotLib->getX() <= 2.75) {
-            // Atualiza leituras
-            for (int i = 0; i < 7; i++) {
-                sonars[i] = edubotLib->getSonar(i);
-            }
+			int angulo = (indice - 3) * 30;
 
-            // Marca posição atual como visitada
-            double x = edubotLib->getX();
-            double y = edubotLib->getY();
-            int xi = static_cast<int>(x * 10);
-            int yi = static_cast<int>(y * 10);
-            std::pair<int, int> posAtual(xi, yi);
-            posicoesVisitadas[posAtual]++;
+			std::cout << "indice: " << indice << "| angulo: " << angulo << std::endl;
 
-            // Penaliza sonares que apontam para regiões já visitadas
-            for (int i = 0; i < 7; i++) {
-                double anguloSensor = (i - 3) * 30;
-                double alcance = sonars[i];
-                double dx = alcance * cos((edubotLib->getTheta() + anguloSensor) * M_PI / 180.0);
-                double dy = alcance * sin((edubotLib->getTheta() + anguloSensor) * M_PI / 180.0);
-                int xt = static_cast<int>((x + dx) * 10);
-                int yt = static_cast<int>((y + dy) * 10);
-                std::pair<int, int> posAlvo(xt, yt);
-                if (posicoesVisitadas[posAlvo] > 0) {
-                    sonars[i] *= 0.6; // penaliza região já visitada
-                }
-            }
+			auto maxDistance = std::max_element(sonars.begin(), sonars.end());
+			double maxValue = *maxDistance;
 
-            // Escolhe melhor direção
-            double maiorDistancia = *std::max_element(sonars.begin(), sonars.end());
-            std::vector<int> candidatos;
-            for (int i = 0; i < 7; i++) {
-                if (fabs(sonars[i] - maiorDistancia) < TOLERANCIA_SONAR) {
-                    candidatos.push_back(i);
-                }
-            }
+			std::cout << "maxDistance: " << maxValue << "tempo de " << std::endl;
+			
+			edubotLib->rotate(angulo);
 
-            // Prioriza frontal
-            int melhorIndice = candidatos[0];
-            int menorDesvio = abs(candidatos[0] - 3);
-            for (int i = 1; i < candidatos.size(); ++i) {
-                int desvio = abs(candidatos[i] - 3);
-                if (desvio < menorDesvio) {
-                    melhorIndice = candidatos[i];
-                    menorDesvio = desvio;
-                }
-            }
+			edubotLib->sleepMilliseconds(20 * abs(angulo));
 
-            int anguloNovo = (melhorIndice - 3) * 30;
-            anguloSuavizado = ALFA * anguloNovo + (1 - ALFA) * anguloSuavizado;
+			edubotLib->move(maxValue * 0.3);
 
-            // Aplica rotação suavizada
-            edubotLib->rotate(static_cast<int>(anguloSuavizado));
-            edubotLib->sleepMilliseconds(20 * abs(anguloSuavizado));
+			edubotLib->sleepMilliseconds(maxValue * 500);
+			// bumpers
+			// Verifica colisão com bumpers
+			bool colisao = false;
+			for (int i=0; i<4; i++) {
+				bool bateu = edubotLib->getBumper(i);
+				std::cout << "B" << i << ": " << (bateu ? "true":"false") << ", ";
+				if (bateu) colisao = true;
+			}
+			
+			if (colisao) {
+				std::cout << ">> Colisão detectada! Executando manobra de evasão..." << std::endl;
+			
+				// Dá ré por 0.5 segundos
+				edubotLib->move(-0.3);
+				edubotLib->sleepMilliseconds(500);
+			
+				// Para os motores
+				edubotLib->stop();
+				edubotLib->sleepMilliseconds(200);
+			
+				// Rotaciona 90 graus para a direita (poderia alternar depois se quiser)
+				edubotLib->rotate(90);
+				edubotLib->sleepMilliseconds(2000);
 
-            // Salva posição antes do movimento
-            double xAntes = edubotLib->getX();
-            double yAntes = edubotLib->getY();
-            double distanciaMovimento = maiorDistancia * 0.3;
+				edubotLib->move(0.1);
+				edubotLib->sleepMilliseconds(500);
+			
+			}
 
-            edubotLib->move(distanciaMovimento);
-            edubotLib->sleepMilliseconds(maiorDistancia * 100);
+			std::cout << "leftcount: " << edubotLib->getEncoderCountLeft() << ", ";
+			std::cout << "rightcount: " << edubotLib->getEncoderCountRight() << ", ";
+			std::cout << "dt(looptime): " << edubotLib->getEncoderCountDT() << ", ";
+			
+			std::cout << "x: " << edubotLib->getX() << ", ";
+			std::cout << "y: " << edubotLib->getY() << ", ";
+			std::cout << "theta: " << edubotLib->getTheta() << ", ";
+			
+			std::cout << "battCell0: " << edubotLib->getBatteryCellVoltage(0) << ", ";
+			std::cout << "battCell1: " << edubotLib->getBatteryCellVoltage(1) << ", ";
+			std::cout << "battCell2: " << edubotLib->getBatteryCellVoltage(2);
 
-            // Verifica deslocamento real
-            double xDepois = edubotLib->getX();
-            double yDepois = edubotLib->getY();
-            bool deslocou = (fabs(xDepois - xAntes) > LIMIAR_MOVIMENTO || fabs(yDepois - yAntes) > LIMIAR_MOVIMENTO);
+			edubotLib->neutral();
+			edubotLib->sleepMilliseconds(30);
+			
+			// line break
+			std::cout << std::endl;
 
-            if (!deslocou && fabs(distanciaMovimento - ultimaVelocidade) < 0.0001) {
-                contadorRepeticoesSemMovimento++;
-            } else {
-                contadorRepeticoesSemMovimento = 0;
-            }
-            ultimaVelocidade = distanciaMovimento;
+		}
 
-            // Executa manobra se empacado
-            if (contadorRepeticoesSemMovimento >= 3) {
-                std::cout << ">> Empacamento detectado. Executando manobra..." << std::endl;
-                edubotLib->move(-0.3);
-                edubotLib->sleepMilliseconds(500);
-                edubotLib->stop();
-                edubotLib->sleepMilliseconds(200);
-                int anguloAleatorio = (std::rand() % 91 + 30);
-                if (std::rand() % 2 == 0) anguloAleatorio *= -1;
-                edubotLib->rotate(anguloAleatorio);
-                edubotLib->sleepMilliseconds(20 * abs(anguloAleatorio));
-                edubotLib->move(0.1);
-                edubotLib->sleepMilliseconds(500);
-                contadorRepeticoesSemMovimento = 0;
-            }
+		edubotLib->neutral();
+		// Waits for two seconds for processes to reflect on the robot
+		edubotLib->sleepMilliseconds(2000);
 
-            // Colisão com bumpers
-            bool colisao = false;
-            bool esquerda = false, direita = false;
-            for (int i = 0; i < 4; i++) {
-                if (edubotLib->getBumper(i)) {
-                    colisao = true;
-                    if (i == 0 || i == 2) esquerda = true;
-                    if (i == 1 || i == 3) direita = true;
-                }
-            }
+		/*
+		 * Function stop
+		 * Stop the motors / break
+		*/
+		edubotLib->stop();
+		// Waits for two seconds for processes to reflect on the robot
+		edubotLib->sleepMilliseconds(2000);
 
-            if (colisao) {
-                edubotLib->move(-0.3);
-                edubotLib->sleepMilliseconds(500);
-                edubotLib->stop();
-                edubotLib->sleepMilliseconds(200);
-                int direcaoGiro = -90;
-                if (direita && !esquerda) direcaoGiro = -90;
-                else if (esquerda && !direita) direcaoGiro = 90;
-                edubotLib->rotate(direcaoGiro);
-                edubotLib->sleepMilliseconds(2000);
-                edubotLib->move(0.1);
-                edubotLib->sleepMilliseconds(500);
-                contadorRepeticoesSemMovimento = 0;
-            }
+		/*
+		 * Function disconnect
+		 * disconnect from robot
+		 * Important to user EVER
+		*/
+		edubotLib->disconnect();
+	}
+	else{
+		std::cout << "Could not connect on robot!" << std::endl;
+	}
 
-            std::cout << "x: " << edubotLib->getX()
-                      << ", y: " << edubotLib->getY()
-                      << ", theta: " << edubotLib->getTheta() << std::endl;
-        }
-
-        // Finalização
-        edubotLib->neutral();
-        edubotLib->sleepMilliseconds(2000);
-        edubotLib->stop();
-        edubotLib->sleepMilliseconds(2000);
-        edubotLib->disconnect();
-    } else {
-        std::cout << "Não foi possível conectar ao robô!" << std::endl;
-    }
-
-    return 0;
+	return 0;
 }
